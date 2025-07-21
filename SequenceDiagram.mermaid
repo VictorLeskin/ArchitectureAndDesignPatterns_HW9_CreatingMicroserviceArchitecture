@@ -1,0 +1,21 @@
+sequenceDiagram
+    participant Organizer
+    participant TournamentCore
+    participant PlayerService
+    participant RatingService
+    
+    Organizer->>TournamentCore: POST /new_tournament
+    TournamentCore->>PlayerService: Validate players
+    PlayerService-->>TournamentCore: Player data
+    TournamentCore->>TournamentCore: Generate pairings
+    TournamentCore-->>Organizer: Tournament created
+    
+    loop For each match
+        TournamentCore->>TournamentCore: Record result (PUT /game_result)
+        TournamentCore->>RatingService: Notify result
+    end
+    
+    Organizer->>RatingService: POST /new_rating
+    RatingService->>RatingService: Calculate new ratings
+    RatingService->>PlayerService: Update ratings
+    RatingService-->>Organizer: Rating updates

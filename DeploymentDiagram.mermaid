@@ -1,0 +1,11 @@
+graph LR
+    subgraph Cloud Provider
+        A[Player Service] --> LB[Load Balancer]
+        B[Tournament Service] --> LB
+        C[Rating Service] --> LB
+        LB --> Client[Organizer/Players]
+    end
+    
+    A --> ADB[(Player DB Cluster)]
+    B --> TDB[(Tournament DB Cluster)]
+    C --> RDB[(Rating DB Cluster)]

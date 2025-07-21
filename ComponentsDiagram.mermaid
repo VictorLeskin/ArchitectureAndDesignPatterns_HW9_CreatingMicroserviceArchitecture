@@ -1,0 +1,8 @@
+graph TD
+    subgraph Tournament System
+        A[Player Service] -->|HTTP API| B[Tournament Core]
+        C[Rating Service] -->|HTTP API| B
+        B -->|Store results| D[(Tournament DB)]
+        A -->|Store players| E[(Player DB)]
+        C -->|Store ratings| F[(Rating DB)]
+    end

@@ -1,0 +1,7 @@
+flowchart LR
+    A[Organizer] -->|Create tournament| B[Tournament Service]
+    B -->|Get player data| C[Player Service]
+    B -->|Store matches| D[Tournament DB]
+    B -->|Match results| E[Rating Service]
+    E -->|Update ratings| C
+    C -->|Store ratings| F[Player DB]
