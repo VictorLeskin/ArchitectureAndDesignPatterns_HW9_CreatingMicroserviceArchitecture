@@ -1,19 +1,28 @@
 openapi: 3.0.3
 info:
   title: Round-Robin Tournament API
-  description: API for managing round-robin tournaments where every player plays every other player exactly once (no draws allowed)
-  version: 1.0.0
+  description: API for managing round-robin tournaments where each player plays every other player exactly once (win/lose only)
+  version: 1.1.0
+  contact:
+    email: support@tournamentapi.com
 
 servers:
-  - url: https://api.roundrobintournament.com/v1
-    description: Production server
+  - url: https://api.tournament.core/v1
+    description: Core tournament management service
+  - url: https://api.player.management/v1
+    description: Player account service
+  - url: https://api.rating.service/v1
+    description: Rating calculation service
 
 paths:
+  # Player Service Endpoints
   /new_player:
     post:
       tags: [Player Management]
       summary: Register a new player
-      description: Creates a new player record in the system
+      description: Creates a new player account in the system
+      servers:
+        - url: https://api.player.management/v1
       requestBody:
         required: true
         content:
@@ -23,13 +32,21 @@ paths:
               properties:
                 name:
                   type: string
-                  example: "Anna Smith"
+                  example: "Magnus Carlsen"
                   minLength: 2
+                  maxLength: 100
                 email:
                   type: string
                   format: email
-                  example: "anna@example.com"
-              required: [name, email]
+                  example: "player@example.com"
+                initial_rating:
+                  type: number
+                  minimum: 100
+                  maximum: 3000
+                  default: 1000
+              required:
+                - name
+                - email
       responses:
         '201':
           description: Player created successfully
@@ -41,15 +58,20 @@ paths:
                   player_id:
                     type: string
                     format: uuid
-                  initial_rating:
-                    type: number
-                    default: 1000
+                    example: "5e9c5d8a-2f9b-4e8d-8c1a-1e9b8c7d6e5f"
+                  rating_service_endpoint:
+                    type: string
+                    format: uri
+                    example: "https://api.rating.service/v1/players/{player_id}"
 
+  # Organizer Service Endpoints
   /new_tournament_organizer:
     post:
       tags: [Organizer Management]
       summary: Register a tournament organizer
       description: Creates a new organizer account
+      servers:
+        - url: https://api.tournament.core/v1
       requestBody:
         required: true
         content:
@@ -57,14 +79,20 @@ paths:
             schema:
               type: object
               properties:
-                organization:
+                organization_name:
                   type: string
-                  example: " Club International"
+                  example: "International  Federation"
                 contact_email:
                   type: string
                   format: email
-                  example: "organizer@club.com"
-              required: [organization, contact_email]
+                  example: "contact@fide.com"
+                website:
+                  type: string
+                  format: uri
+                  nullable: true
+              required:
+                - organization_name
+                - contact_email
       responses:
         '201':
           description: Organizer created successfully
@@ -78,13 +106,16 @@ paths:
                     format: uuid
                   api_key:
                     type: string
-                    description: Secret key for API authentication
+                    description: "Secret key for authentication"
 
+  # Tournament Service Endpoints
   /new_tournament:
     post:
       tags: [Tournament Management]
       summary: Create a new round-robin tournament
-      description: Initializes a new tournament where each player plays every other player exactly once
+      description: Initializes a tournament with all possible player pairings
+      servers:
+        - url: https://api.tournament.core/v1
       requestBody:
         required: true
         content:
@@ -94,7 +125,7 @@ paths:
               properties:
                 name:
                   type: string
-                  example: "Winter Classic 2024"
+                  example: "World  Championship 2024"
                 organizer_id:
                   type: string
                   format: uuid
@@ -104,14 +135,23 @@ paths:
                     type: string
                     format: uuid
                   minItems: 2
-                  example: ["5e9c5d8a-2f9b-4e8d-8c1a-1e9b8c7d6e5f", "3a2b1c4d-5e6f-7g8h-9i0j-1k2l3m4n5o6p"]
+                  maxItems: 50
+                  description: "List of participating player UUIDs"
                 start_date:
                   type: string
                   format: date
-              required: [name, organizer_id, player_ids, start_date]
+                rating_system:
+                  type: string
+                  enum: [elo, glicko]
+                  default: "elo"
+              required:
+                - name
+                - organizer_id
+                - player_ids
+                - start_date
       responses:
         '201':
-          description: Tournament created with scheduled matches
+          description: Tournament created with all pairings
           content:
             application/json:
               schema:
@@ -122,30 +162,21 @@ paths:
                     format: uuid
                   total_matches:
                     type: integer
-                    description: "Calculated as n*(n-1)/2 where n is number of players"
-                  match_schedule:
+                    example: 45
+                    description: "n*(n-1)/2 where n is player count"
+                  first_round_matches:
                     type: array
                     items:
-                      type: object
-                      properties:
-                        match_id:
-                          type: string
-                          format: uuid
-                        player1_id:
-                          type: string
-                          format: uuid
-                        player2_id:
-                          type: string
-                          format: uuid
-                        scheduled_time:
-                          type: string
-                          format: date-time
+                      $ref: '#/components/schemas/ScheduledMatch'
 
+  # Match Service Endpoints
   /game_result:
     get:
-      tags: [Match Results]
+      tags: [Match Management]
       summary: Get match result
       description: Retrieve the outcome of a specific match
+      servers:
+        - url: https://api.tournament.core/v1
       parameters:
         - name: match_id
           in: query
@@ -169,18 +200,19 @@ paths:
                     format: uuid
                   match_duration:
                     type: integer
-                    description: Duration in minutes
-                  ended_at:
+                    description: "Duration in minutes"
+                  completed_at:
                     type: string
                     format: date-time
-        '404':
-          description: Match not found or not completed
 
+  # Tournament Results Endpoints
   /tournament_result:
     get:
       tags: [Tournament Results]
       summary: Get tournament standings
-      description: Returns current standings sorted by number of wins
+      description: Returns current rankings based on wins
+      servers:
+        - url: https://api.tournament.core/v1
       parameters:
         - name: tournament_id
           in: query
@@ -202,26 +234,16 @@ paths:
                   standings:
                     type: array
                     items:
-                      type: object
-                      properties:
-                        player_id:
-                          type: string
-                          format: uuid
-                        wins:
-                          type: integer
-                        losses:
-                          type: integer
-                        points:
-                          type: integer
-                          description: "Always equal to wins (since no draws)"
-                        position:
-                          type: integer
+                      $ref: '#/components/schemas/PlayerStanding'
 
+  # Rating Service Endpoints
   /new_rating:
     post:
-      tags: [Rating System]
+      tags: [Rating Management]
       summary: Update player ratings
-      description: Recalculates ratings after tournament completion using a win/lose-only system
+      description: Recalculates ratings after tournament completion
+      servers:
+        - url: https://api.rating.service/v1
       requestBody:
         required: true
         content:
@@ -233,10 +255,11 @@ paths:
                   type: string
                   format: uuid
                 k_factor:
-                  type: integer
+                  type: number
                   default: 32
-                  description: "Rating adjustment sensitivity (typically 16-32)"
-              required: [tournament_id]
+                  description: "Rating adjustment sensitivity"
+              required:
+                - tournament_id
       responses:
         '200':
           description: Ratings updated successfully
@@ -248,26 +271,65 @@ paths:
                   updated_players:
                     type: array
                     items:
-                      type: object
-                      properties:
-                        player_id:
-                          type: string
-                          format: uuid
-                        old_rating:
-                          type: number
-                        new_rating:
-                          type: number
-                        change:
-                          type: number
+                      $ref: '#/components/schemas/RatingUpdate'
 
 components:
   schemas:
+    ScheduledMatch:
+      type: object
+      properties:
+        match_id:
+          type: string
+          format: uuid
+        player1_id:
+          type: string
+          format: uuid
+        player2_id:
+          type: string
+          format: uuid
+        scheduled_time:
+          type: string
+          format: date-time
+          nullable: true
+
+    PlayerStanding:
+      type: object
+      properties:
+        player_id:
+          type: string
+          format: uuid
+        position:
+          type: integer
+        wins:
+          type: integer
+        losses:
+          type: integer
+        rating:
+          type: number
+          description: "Current rating"
+
+    RatingUpdate:
+      type: object
+      properties:
+        player_id:
+          type: string
+          format: uuid
+        old_rating:
+          type: number
+        new_rating:
+          type: number
+        change:
+          type: number
+
     Error:
       type: object
       properties:
-        error:
+        error_code:
           type: string
-          example: "Invalid player count - must have at least 2 players"
-        code:
-          type: integer
-          example: 400
+          example: "INVALID_PLAYER_COUNT"
+        message:
+          type: string
+          example: "Tournament requires at least 2 players"
+        timestamp:
+          type: string
+          format: date-time
