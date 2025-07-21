@@ -1,0 +1,273 @@
+openapi: 3.0.3
+info:
+  title: Round-Robin Tournament API
+  description: API for managing round-robin tournaments where every player plays every other player exactly once (no draws allowed)
+  version: 1.0.0
+
+servers:
+  - url: https://api.roundrobintournament.com/v1
+    description: Production server
+
+paths:
+  /new_player:
+    post:
+      tags: [Player Management]
+      summary: Register a new player
+      description: Creates a new player record in the system
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: "Anna Smith"
+                  minLength: 2
+                email:
+                  type: string
+                  format: email
+                  example: "anna@example.com"
+              required: [name, email]
+      responses:
+        '201':
+          description: Player created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  player_id:
+                    type: string
+                    format: uuid
+                  initial_rating:
+                    type: number
+                    default: 1000
+
+  /new_tournament_organizer:
+    post:
+      tags: [Organizer Management]
+      summary: Register a tournament organizer
+      description: Creates a new organizer account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                organization:
+                  type: string
+                  example: " Club International"
+                contact_email:
+                  type: string
+                  format: email
+                  example: "organizer@club.com"
+              required: [organization, contact_email]
+      responses:
+        '201':
+          description: Organizer created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  organizer_id:
+                    type: string
+                    format: uuid
+                  api_key:
+                    type: string
+                    description: Secret key for API authentication
+
+  /new_tournament:
+    post:
+      tags: [Tournament Management]
+      summary: Create a new round-robin tournament
+      description: Initializes a new tournament where each player plays every other player exactly once
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: "Winter Classic 2024"
+                organizer_id:
+                  type: string
+                  format: uuid
+                player_ids:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+                  minItems: 2
+                  example: ["5e9c5d8a-2f9b-4e8d-8c1a-1e9b8c7d6e5f", "3a2b1c4d-5e6f-7g8h-9i0j-1k2l3m4n5o6p"]
+                start_date:
+                  type: string
+                  format: date
+              required: [name, organizer_id, player_ids, start_date]
+      responses:
+        '201':
+          description: Tournament created with scheduled matches
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tournament_id:
+                    type: string
+                    format: uuid
+                  total_matches:
+                    type: integer
+                    description: "Calculated as n*(n-1)/2 where n is number of players"
+                  match_schedule:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        match_id:
+                          type: string
+                          format: uuid
+                        player1_id:
+                          type: string
+                          format: uuid
+                        player2_id:
+                          type: string
+                          format: uuid
+                        scheduled_time:
+                          type: string
+                          format: date-time
+
+  /game_result:
+    get:
+      tags: [Match Results]
+      summary: Get match result
+      description: Retrieve the outcome of a specific match
+      parameters:
+        - name: match_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Match result data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  winner_id:
+                    type: string
+                    format: uuid
+                  loser_id:
+                    type: string
+                    format: uuid
+                  match_duration:
+                    type: integer
+                    description: Duration in minutes
+                  ended_at:
+                    type: string
+                    format: date-time
+        '404':
+          description: Match not found or not completed
+
+  /tournament_result:
+    get:
+      tags: [Tournament Results]
+      summary: Get tournament standings
+      description: Returns current standings sorted by number of wins
+      parameters:
+        - name: tournament_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Tournament standings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tournament_id:
+                    type: string
+                    format: uuid
+                  standings:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        player_id:
+                          type: string
+                          format: uuid
+                        wins:
+                          type: integer
+                        losses:
+                          type: integer
+                        points:
+                          type: integer
+                          description: "Always equal to wins (since no draws)"
+                        position:
+                          type: integer
+
+  /new_rating:
+    post:
+      tags: [Rating System]
+      summary: Update player ratings
+      description: Recalculates ratings after tournament completion using a win/lose-only system
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tournament_id:
+                  type: string
+                  format: uuid
+                k_factor:
+                  type: integer
+                  default: 32
+                  description: "Rating adjustment sensitivity (typically 16-32)"
+              required: [tournament_id]
+      responses:
+        '200':
+          description: Ratings updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  updated_players:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        player_id:
+                          type: string
+                          format: uuid
+                        old_rating:
+                          type: number
+                        new_rating:
+                          type: number
+                        change:
+                          type: number
+
+components:
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "Invalid player count - must have at least 2 players"
+        code:
+          type: integer
+          example: 400
